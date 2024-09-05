@@ -1,6 +1,6 @@
 import scratchattach as scratch3
 
-# In-memory storage for map data, update status, rooms, and registered users
+# In-memory storage for map data, update status, and rooms
 map_data = {}
 map_update_status = {}
 rooms = {}  # Room management
@@ -15,153 +15,119 @@ conn = session.connect_cloud("1063141008")  # Your project ID
 
 client = scratch3.CloudRequests(conn)
 
-# Register a new user
 @client.request
-def register(username, password, extra_arg=None, *args):
+def register(username, password, *args):
     if len(args) != 0:
         return "Invalid arguments"
-    
     if username in registered_users:
-        return "User already registered"
-    
+        return "Username already exists"
     registered_users[username] = password
-    print(f"Register request received for user: {username}")
     return "Registration successful"
 
-# Login a user
 @client.request
-def login(username, password, extra_arg=None, *args):
+def login(username, password, *args):
     if len(args) != 0:
         return "Invalid arguments"
-    
     if username in registered_users and registered_users[username] == password:
-        print(f"Login request received for user: {username}")
         return "Login successful"
-    else:
-        return "Login failed"
+    return "Login failed"
 
-# Check if an account is registered
 @client.request
-def is_registered(username, extra_arg=None, *args):
-    if len(args) != 0:
-        return "Invalid arguments"
-    
-    if username in registered_users:
-        return "User is registered"
-    else:
-        return "User is not registered"
-
-# Join the server (room)
-@client.request
-def join_server(username, extra_arg=None, *args):
-    if len(args) != 0:
-        return "Invalid arguments"
-    
-    global next_room_id
-    
+def join_server(*args):
     print("join_server request received")
-    
-    # Find an available room
-    available_room = None
-    for room_id in rooms:
-        if len(rooms[room_id]) < 2:
-            available_room = room_id
-            break
-    
-    if available_room is None:
-        available_room = next_room_id
+    try:
+        global next_room_id
+        room_id = next_room_id
         next_room_id += 1
-        rooms[available_room] = {}
-    
-    player_id = 1 if len(rooms[available_room]) == 0 else 2
-    rooms[available_room][player_id] = {'username': username}
-    
-    response = f"Joined room {available_room} with player ID {player_id}"
-    print("join_server response:", response)
-    return response
+        if len(rooms.get(room_id, {})) < 2:
+            player_id = len(rooms.get(room_id, {})) + 1
+            rooms.setdefault(room_id, {})[player_id] = {}
+            response = f"Joined room {room_id} with player ID {player_id}"
+        else:
+            response = "No available rooms"
+        print("join_server response:", response)
+        return response
+    except Exception as e:
+        print("Error in join_server:", e)
+        return "Error processing request"
 
-# Send map data (from Player 1)
 @client.request
-def send_map_data(room_id, map_data_chunk, extra_arg=None, *args):
-    if len(args) != 0:
-        return "Invalid arguments"
-    
+def send_map_data(room_id, player_id, map_data_chunk, *args):
     print("send_map_data request received")
-    room_id = int(room_id)
-    
-    if room_id in rooms and 1 in rooms[room_id]:  # Only PID 1 can send map data
-        if room_id not in map_data:
-            map_data[room_id] = ""
-        map_data[room_id] += map_data_chunk
-        response = "Map data received"
-    else:
-        response = "Invalid room ID"
-    
-    print("send_map_data response:", response)
-    return response
+    try:
+        room_id = int(room_id)
+        player_id = int(player_id)
+        if player_id != 1:
+            return "Only PID 1 can send map data"
+        if room_id in rooms:
+            if room_id not in map_data:
+                map_data[room_id] = ""
+            map_data[room_id] += map_data_chunk
+            response = "Map data received"
+        else:
+            response = "Invalid room ID"
+        print("send_map_data response:", response)
+        return response
+    except Exception as e:
+        print("Error in send_map_data:", e)
+        return "Error processing request"
 
-# Request map data (by Player 2)
 @client.request
-def request_map_data(room_id, player_id, extra_arg=None, *args):
-    if len(args) != 0:
-        return "Invalid arguments"
-    
+def request_map_data(room_id, player_id, *args):
     print("request_map_data request received")
-    room_id = int(room_id)
-    player_id = int(player_id)
-    
-    if player_id == 2 and room_id in map_data:
-        response = map_data[room_id]
-    elif player_id == 2:
-        response = "Waiting for map data from PID 1"
-    else:
-        response = "Invalid request"
-    
-    print("request_map_data response:", response)
-    return response
+    try:
+        room_id = int(room_id)
+        player_id = int(player_id)
+        if player_id == 2 and room_id in map_data:
+            response = map_data[room_id]
+        elif player_id == 2:
+            response = "Waiting for map data from PID 1"
+        else:
+            response = "Invalid request"
+        print("request_map_data response:", response)
+        return response
+    except Exception as e:
+        print("Error in request_map_data:", e)
+        return "Error processing request"
 
-# Set player location
 @client.request
-def set_location(room_id, location, extra_arg=None, *args):
-    if len(args) != 0:
-        return "Invalid arguments"
-    
+def set_location(room_id, player_id, location, *args):
     print("set_location request received")
-    room_id = int(room_id)
-    player_id = 1 if 'location' not in rooms[room_id][1] else 2
-    
-    if room_id in rooms and player_id in rooms[room_id]:
-        rooms[room_id][player_id]['location'] = location
-        other_player_id = 2 if player_id == 1 else 1
-        other_player_location = rooms[room_id].get(other_player_id, {}).get('location', None)
-        response = {"status": "Location updated", "other_player_location": other_player_location}
-    else:
-        response = "Invalid room ID or player ID"
-    
-    print("set_location response:", response)
-    return response
+    try:
+        room_id = int(room_id)
+        player_id = int(player_id)
+        if room_id in rooms and player_id in rooms[room_id]:
+            rooms[room_id][player_id]['location'] = location
+            other_player_id = 2 if player_id == 1 else 1
+            other_player_location = rooms[room_id].get(other_player_id, {}).get('location', None)
+            response = {"status": "Location updated", "other_player_location": other_player_location}
+        else:
+            response = "Invalid room ID or player ID"
+        print("set_location response:", response)
+        return response
+    except Exception as e:
+        print("Error in set_location:", e)
+        return "Error processing request"
 
-# Start a new round
 @client.request
-def new_round(room_id, extra_arg=None, *args):
-    if len(args) != 0:
-        return "Invalid arguments"
-    
+def new_round(room_id, *args):
     print("new_round request received")
-    room_id = int(room_id)
-    
-    if room_id in rooms:
-        map_data[room_id] = ""
-        map_update_status[room_id] = "Pending"
-        response = "New round started. Map data reset."
-    else:
-        response = "Invalid room ID"
-    
-    print("new_round response:", response)
-    return response
+    try:
+        room_id = int(room_id)
+        if room_id in rooms:
+            map_data[room_id] = ""
+            map_update_status[room_id] = "Pending"
+            response = "New round started. Map data reset."
+        else:
+            response = "Invalid room ID"
+        print("new_round response:", response)
+        return response
+    except Exception as e:
+        print("Error in new_round:", e)
+        return "Error processing request"
 
-@client.event
-def on_ready():
-    print("Request handler is running")
+def run():
+    client.run()
 
-client.run()
+if __name__ == '__main__':
+    run()
